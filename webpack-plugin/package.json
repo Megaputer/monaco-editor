@@ -33,7 +33,7 @@
 		"@megaputer/monaco-editor": ">= 0.31.0"
 	},
 	"devDependencies": {
-		"@megaputer/monaco-editor": "D:/monaco/monaco-editor/release",
+		"@megaputer/monaco-editor": "0.33.0",
 		"css-loader": "^6.6.0",
 		"file-loader": "^6.2.0",
 		"glob": "^7.2.0",
