@@ -3,8 +3,9 @@
 (function () {
 	const corePaths = {
 		src: '/vscode/out/vs',
-		'npm/dev': 'node_modules/monaco-editor-core/dev/vs',
-		'npm/min': 'node_modules/monaco-editor-core/min/vs',
+		'npm/dev': 'node_modules/@megaputer/monaco-editor-core/dev/vs',
+		'npm/min': 'node_modules/@megaputer/monaco-editor-core/min/vs',
+		'npm/esm': 'node_modules/@megaputer/monaco-editor-core/esm/vs',
 		built: '/vscode/out-monaco-editor-core/min/vs',
 		releaseDev: 'release/dev/vs',
 		releaseMin: 'release/min/vs'

@@ -12,7 +12,7 @@ import { REPO_ROOT, readFiles, writeFiles } from './utils';
 import { removeDir } from './fs';
 
 const MONACO_EDITOR_VERSION: string = (() => {
-	const output = cp.execSync(`npm show monaco-editor version`).toString();
+	const output = cp.execSync(`npm show @megaputer/monaco-editor version`).toString();
 	const version = output.split(/\r\n|\r|\n/g)[0];
 	if (!/\d+\.\d+\.\d+/.test(version)) {
 		console.log('unrecognized package.json version: ' + version);
@@ -92,7 +92,7 @@ function generateWebsite() {
 		}
 
 		let contents = file.contents.toString();
-		contents = contents.replace(/\.\.\/release\/dev/g, 'node_modules/monaco-editor/min');
+		contents = contents.replace(/\.\.\/release\/dev/g, 'node_modules/@megaputer/monaco-editor/min');
 		// contents = contents.replace(/\.\.\/\.\.\/release\/dev/g, '../monaco-editor/release/dev');
 		contents = contents.replace(/{{version}}/g, MONACO_EDITOR_VERSION);
 		contents = contents.replace(/{{year}}/g, String(new Date().getFullYear()));

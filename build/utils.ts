@@ -155,6 +155,9 @@ function buildOneAMD(
 		},
 		outbase: `src/${options.base}`,
 		outdir: `out/release/${type}/vs/${options.base}/`,
+		loader: {
+			'.ttf': 'file'
+		},
 		plugins: [
 			alias({
 				'vscode-nls': path.join(__dirname, '../build/fillers/vscode-nls.ts'),

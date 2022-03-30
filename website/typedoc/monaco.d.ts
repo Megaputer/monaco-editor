@@ -21,7 +21,7 @@ declare namespace monaco {
     export interface Environment {
         globalAPI?: boolean;
         baseUrl?: string;
-        getWorker?(workerId: string, label: string): Worker;
+        getWorker?(workerId: string, label: string): Promise<Worker> | Worker;
         getWorkerUrl?(workerId: string, label: string): string;
     }
 
@@ -410,10 +410,14 @@ declare namespace monaco {
         LaunchMail = 124,
         LaunchApp2 = 125,
         /**
+         * VK_CLEAR, 0x0C, CLEAR key
+         */
+        Clear = 126,
+        /**
          * Placed last to cover the length of the enum.
          * Please do not depend on this value!
          */
-        MAX_VALUE = 126
+        MAX_VALUE = 127
     }
     export class KeyMod {
         static readonly CtrlCmd: number;
@@ -465,6 +469,16 @@ declare namespace monaco {
         readonly timestamp: number;
         preventDefault(): void;
         stopPropagation(): void;
+    }
+
+    export interface IMouseWheelEvent extends MouseEvent {
+        readonly wheelDelta: number;
+        readonly wheelDeltaX: number;
+        readonly wheelDeltaY: number;
+        readonly deltaX: number;
+        readonly deltaY: number;
+        readonly deltaZ: number;
+        readonly deltaMode: number;
     }
 
     export interface IScrollEvent {
@@ -1002,6 +1016,11 @@ declare namespace monaco.editor {
     export function defineTheme(themeName: string, themeData: IStandaloneThemeData): void;
 
     /**
+     * Define a new completion item kinds.
+     */
+    export function defineExtendedCompletionItemKinds(completionItemKinds: Map<number, string>): void;
+
+    /**
      * Switches to a theme.
      */
     export function setTheme(themeName: string): void;
@@ -1016,7 +1035,12 @@ declare namespace monaco.editor {
      */
     export function registerCommand(id: string, handler: (accessor: any, ...args: any[]) => void): IDisposable;
 
-    export type BuiltinTheme = 'vs' | 'vs-dark' | 'hc-black';
+    /**
+     * Register a custom completion score method.
+     */
+    export function registerCompletionScoreMethod(scorer: FuzzyScorer): void;
+
+    export type BuiltinTheme = 'vs' | 'vs-dark' | 'hc-black' | 'hc-light';
 
     export interface IStandaloneThemeData {
         base: BuiltinTheme;
@@ -1186,7 +1210,7 @@ declare namespace monaco.editor {
         maxTokenizationLineLength?: number;
         /**
          * Theme to be used for rendering.
-         * The current out-of-the-box available themes are: 'vs' (default), 'vs-dark', 'hc-black'.
+         * The current out-of-the-box available themes are: 'vs' (default), 'vs-dark', 'hc-black', 'hc-light'.
          * You can create custom themes via `monaco.editor.defineTheme`.
          * To switch a theme, use `monaco.editor.setTheme`.
          * **NOTE**: The theme might be overwritten if the OS is in high contrast mode, unless `autoDetectHighContrast` is set to false.
@@ -1219,7 +1243,7 @@ declare namespace monaco.editor {
         language?: string;
         /**
          * Initial theme to be used for rendering.
-         * The current out-of-the-box available themes are: 'vs' (default), 'vs-dark', 'hc-black'.
+         * The current out-of-the-box available themes are: 'vs' (default), 'vs-dark', 'hc-black', 'hc-light.
          * You can create custom themes via `monaco.editor.defineTheme`.
          * To switch a theme, use `monaco.editor.setTheme`.
          * **NOTE**: The theme might be overwritten if the OS is in high contrast mode, unless `autoDetectHighContrast` is set to false.
@@ -1250,7 +1274,7 @@ declare namespace monaco.editor {
     export interface IStandaloneDiffEditorConstructionOptions extends IDiffEditorConstructionOptions {
         /**
          * Initial theme to be used for rendering.
-         * The current out-of-the-box available themes are: 'vs' (default), 'vs-dark', 'hc-black'.
+         * The current out-of-the-box available themes are: 'vs' (default), 'vs-dark', 'hc-black', 'hc-light.
          * You can create custom themes via `monaco.editor.defineTheme`.
          * To switch a theme, use `monaco.editor.setTheme`.
          * **NOTE**: The theme might be overwritten if the OS is in high contrast mode, unless `autoDetectHighContrast` is set to false.
@@ -1353,6 +1377,21 @@ declare namespace monaco.editor {
         Auto = 1,
         Hidden = 2,
         Visible = 3
+    }
+
+    /**
+     * An array representing a fuzzy match.
+     *
+     * 0. the score
+     * 1. the offset at which matching started
+     * 2. `<match_pos_N>`
+     * 3. `<match_pos_1>`
+     * 4. `<match_pos_0>` etc
+     */
+    export type FuzzyScore = [score: number, wordStart: number, ...matches: number[]];
+
+    export interface FuzzyScorer {
+        (pattern: string, lowPattern: string, patternPos: number, word: string, lowWord: string, wordPos: number, firstMatchCanBeWeak: boolean): FuzzyScore | undefined;
     }
 
     export interface ThemeColor {
@@ -1687,6 +1726,7 @@ declare namespace monaco.editor {
 
     export interface BracketPairColorizationOptions {
         enabled: boolean;
+        independentColorPoolPerBracketType: boolean;
     }
 
     export interface ITextModelUpdateOptions {
@@ -2040,10 +2080,29 @@ declare namespace monaco.editor {
          */
         setEOL(eol: EndOfLineSequence): void;
         /**
+         * Undo edit operations until the previous undo/redo point.
+         * The inverse edit operations will be pushed on the redo stack.
+         */
+        undo(): void | Promise<void>;
+        /**
+         * Is there anything in the undo stack?
+         */
+        canUndo(): boolean;
+        /**
+         * Redo edit operations until the next undo/redo point.
+         * The inverse edit operations will be pushed on the undo stack.
+         */
+        redo(): void | Promise<void>;
+        /**
+         * Is there anything in the redo stack?
+         */
+        canRedo(): boolean;
+        /**
          * An event emitted when the contents of the model have changed.
          * @event
          */
         onDidChangeContent(listener: (e: IModelContentChangedEvent) => void): IDisposable;
+        onDidChangeContentFast(listener: (e: IModelContentChangedEvent) => void): IDisposable;
         /**
          * An event emitted when decorations of the model have changed.
          * @event
@@ -2065,6 +2124,16 @@ declare namespace monaco.editor {
          */
         readonly onDidChangeLanguageConfiguration: IEvent<IModelLanguageConfigurationChangedEvent>;
         /**
+         * An event emitted when the tokens associated with the model have changed.
+         * @event
+         */
+        readonly onDidChangeTokens: IEvent<IModelTokensChangedEvent>;
+        /**
+         * An event emitted when the tokenization started or finished
+         * @event
+         */
+        onDidChangeTokenizationState(listener: (started: boolean) => void): IDisposable;
+        /**
          * An event emitted when the model has been attached to the first editor or detached from the last editor.
          * @event
          */
@@ -2082,6 +2151,10 @@ declare namespace monaco.editor {
          * Returns if this model is attached to an editor or not.
          */
         isAttachedToEditor(): boolean;
+        /**
+         * Set the tokenization info emitter line index
+         */
+        setTokenizationInfoEmitterLineIndex(index: number): void;
     }
 
     export enum PositionAffinity {
@@ -2096,7 +2169,15 @@ declare namespace monaco.editor {
         /**
          * No preference.
         */
-        None = 2
+        None = 2,
+        /**
+         * If the given position is on injected text, prefers the position left of it.
+        */
+        LeftOfInjectedText = 3,
+        /**
+         * If the given position is on injected text, prefers the position right of it.
+        */
+        RightOfInjectedText = 4
     }
 
     /**
@@ -2294,6 +2375,13 @@ declare namespace monaco.editor {
         Smooth = 0,
         Immediate = 1
     }
+
+    export type CompletionItemInfo = {
+        completion: languages.CompletionItem;
+        word?: string;
+    };
+
+    export type CompletionListItemSelectionMethod = (isAuto: boolean, selectionIndex: number, items: CompletionItemInfo[]) => number;
 
     /**
      * An editor.
@@ -2599,6 +2687,24 @@ declare namespace monaco.editor {
     export interface IModelDecorationsChangedEvent {
         readonly affectsMinimap: boolean;
         readonly affectsOverviewRuler: boolean;
+    }
+
+    /**
+     * An event describing that some ranges of lines have been tokenized (their tokens have changed).
+     */
+    export interface IModelTokensChangedEvent {
+        readonly tokenizationSupportChanged: boolean;
+        readonly semanticTokensApplied: boolean;
+        readonly ranges: {
+            /**
+             * The start of the range (inclusive)
+             */
+            readonly fromLineNumber: number;
+            /**
+             * The end of the range (inclusive)
+             */
+            readonly toLineNumber: number;
+        }[];
     }
 
     export interface IModelOptionsChangedEvent {
@@ -3578,6 +3684,11 @@ declare namespace monaco.editor {
          * Defaults to false.
          */
         above?: boolean;
+        /**
+         * Max width of the hover widget.
+         * Defaults to 500.
+         */
+        maxWidth?: number;
     }
 
     /**
@@ -3796,13 +3907,21 @@ declare namespace monaco.editor {
         cycle?: boolean;
     }
 
+    export type QuickSuggestionsValue = 'on' | 'inline' | 'off';
+
     /**
      * Configuration options for quick suggestions
      */
     export interface IQuickSuggestionsOptions {
-        other?: boolean;
-        comments?: boolean;
-        strings?: boolean;
+        other?: boolean | QuickSuggestionsValue;
+        comments?: boolean | QuickSuggestionsValue;
+        strings?: boolean | QuickSuggestionsValue;
+    }
+
+    export interface InternalQuickSuggestionsOptions {
+        readonly other: QuickSuggestionsValue;
+        readonly comments: QuickSuggestionsValue;
+        readonly strings: QuickSuggestionsValue;
     }
 
     export type LineNumbersType = 'on' | 'off' | 'relative' | 'interval' | ((lineNumber: number) => string);
@@ -3975,6 +4094,10 @@ declare namespace monaco.editor {
          * Enable or disable bracket pair colorization.
         */
         enabled?: boolean;
+        /**
+         * Use independent color pool per bracket type.
+        */
+        independentColorPoolPerBracketType?: boolean;
     }
 
     export interface IGuidesOptions {
@@ -4412,7 +4535,7 @@ declare namespace monaco.editor {
         parameterHints: IEditorOption<EditorOption.parameterHints, Readonly<Required<IEditorParameterHintOptions>>>;
         peekWidgetDefaultFocus: IEditorOption<EditorOption.peekWidgetDefaultFocus, 'tree' | 'editor'>;
         definitionLinkOpensInPeek: IEditorOption<EditorOption.definitionLinkOpensInPeek, boolean>;
-        quickSuggestions: IEditorOption<EditorOption.quickSuggestions, any>;
+        quickSuggestions: IEditorOption<EditorOption.quickSuggestions, InternalQuickSuggestionsOptions>;
         quickSuggestionsDelay: IEditorOption<EditorOption.quickSuggestionsDelay, number>;
         readOnly: IEditorOption<EditorOption.readOnly, boolean>;
         renameOnType: IEditorOption<EditorOption.renameOnType, boolean>;
@@ -4488,6 +4611,12 @@ declare namespace monaco.editor {
          * Defaults to an internal DOM node.
          */
         overflowWidgetsDomNode?: HTMLElement;
+        /**
+         * Enables dropping into the editor.
+         *
+         * This shows a preview of the drop location and triggers an `onDropIntoEditor` event.
+         */
+        enableDropIntoEditor?: boolean;
     }
 
     /**
@@ -4609,6 +4738,11 @@ declare namespace monaco.editor {
          * Placement preference for position, in order of preference.
          */
         preference: ContentWidgetPositionPreference[];
+        /**
+         * Placement preference when multiple view positions refer to the same (model) position.
+         * This plays a role when injected text is involved.
+        */
+        positionAffinity?: PositionAffinity;
     }
 
     /**
@@ -5033,6 +5167,11 @@ declare namespace monaco.editor {
          */
         readonly onMouseLeave: IEvent<IPartialEditorMouseEvent>;
         /**
+         * An event emitted on a "mousewheel"
+         * @event
+         */
+        readonly onMouseWheel: IEvent<IMouseWheelEvent>;
+        /**
          * An event emitted on a "keyup".
          * @event
          */
@@ -5293,6 +5432,14 @@ declare namespace monaco.editor {
          */
         applyFontInfo(target: HTMLElement): void;
         setBanner(bannerDomNode: HTMLElement | null, height: number): void;
+        /**
+         * Set a custom completion list item selection method.
+         */
+        setCompletionListItemSelectorMethod(method: CompletionListItemSelectionMethod): void;
+        /**
+         * Get a custom completion list item selection method.
+         */
+        getCompletionListItemSelectorMethod(): CompletionListItemSelectionMethod | undefined;
     }
 
     /**
@@ -5396,6 +5543,34 @@ declare namespace monaco.editor {
 
 declare namespace monaco.languages {
 
+    export interface IRelativePattern {
+        /**
+         * A base file path to which this pattern will be matched against relatively.
+         */
+        readonly base: string;
+        /**
+         * A file glob pattern like `*.{ts,js}` that will be matched on file paths
+         * relative to the base path.
+         *
+         * Example: Given a base of `/home/work/folder` and a file path of `/home/work/folder/index.js`,
+         * the file glob pattern will match on `index.js`.
+         */
+        readonly pattern: string;
+    }
+
+    export type LanguageSelector = string | LanguageFilter | ReadonlyArray<string | LanguageFilter>;
+
+    export interface LanguageFilter {
+        readonly language?: string;
+        readonly scheme?: string;
+        readonly pattern?: string | IRelativePattern;
+        readonly notebookType?: string;
+        /**
+         * This provider is implemented in the UI thread.
+         */
+        readonly hasAccessToAllModels?: boolean;
+        readonly exclusive?: boolean;
+    }
 
     /**
      * Register information about a new language.
@@ -5541,112 +5716,112 @@ declare namespace monaco.languages {
      * work together with a tokens provider set using `registerDocumentSemanticTokensProvider` or
      * `registerDocumentRangeSemanticTokensProvider`.
      */
-    export function setMonarchTokensProvider(languageId: string, languageDef: IMonarchLanguage | Thenable<IMonarchLanguage>): IDisposable;
+    export function setMonarchTokensProvider(languageId: string, languageDef: IMonarchLanguage | Thenable<IMonarchLanguage>, onTokenParsed?: (line: number, startOffset: number, type: string) => void): IDisposable;
 
     /**
      * Register a reference provider (used by e.g. reference search).
      */
-    export function registerReferenceProvider(languageId: string, provider: ReferenceProvider): IDisposable;
+    export function registerReferenceProvider(languageSelector: LanguageSelector, provider: ReferenceProvider): IDisposable;
 
     /**
      * Register a rename provider (used by e.g. rename symbol).
      */
-    export function registerRenameProvider(languageId: string, provider: RenameProvider): IDisposable;
+    export function registerRenameProvider(languageSelector: LanguageSelector, provider: RenameProvider): IDisposable;
 
     /**
      * Register a signature help provider (used by e.g. parameter hints).
      */
-    export function registerSignatureHelpProvider(languageId: string, provider: SignatureHelpProvider): IDisposable;
+    export function registerSignatureHelpProvider(languageSelector: LanguageSelector, provider: SignatureHelpProvider): IDisposable;
 
     /**
      * Register a hover provider (used by e.g. editor hover).
      */
-    export function registerHoverProvider(languageId: string, provider: HoverProvider): IDisposable;
+    export function registerHoverProvider(languageSelector: LanguageSelector, provider: HoverProvider): IDisposable;
 
     /**
      * Register a document symbol provider (used by e.g. outline).
      */
-    export function registerDocumentSymbolProvider(languageId: string, provider: DocumentSymbolProvider): IDisposable;
+    export function registerDocumentSymbolProvider(languageSelector: LanguageSelector, provider: DocumentSymbolProvider): IDisposable;
 
     /**
      * Register a document highlight provider (used by e.g. highlight occurrences).
      */
-    export function registerDocumentHighlightProvider(languageId: string, provider: DocumentHighlightProvider): IDisposable;
+    export function registerDocumentHighlightProvider(languageSelector: LanguageSelector, provider: DocumentHighlightProvider): IDisposable;
 
     /**
      * Register an linked editing range provider.
      */
-    export function registerLinkedEditingRangeProvider(languageId: string, provider: LinkedEditingRangeProvider): IDisposable;
+    export function registerLinkedEditingRangeProvider(languageSelector: LanguageSelector, provider: LinkedEditingRangeProvider): IDisposable;
 
     /**
      * Register a definition provider (used by e.g. go to definition).
      */
-    export function registerDefinitionProvider(languageId: string, provider: DefinitionProvider): IDisposable;
+    export function registerDefinitionProvider(languageSelector: LanguageSelector, provider: DefinitionProvider): IDisposable;
 
     /**
      * Register a implementation provider (used by e.g. go to implementation).
      */
-    export function registerImplementationProvider(languageId: string, provider: ImplementationProvider): IDisposable;
+    export function registerImplementationProvider(languageSelector: LanguageSelector, provider: ImplementationProvider): IDisposable;
 
     /**
      * Register a type definition provider (used by e.g. go to type definition).
      */
-    export function registerTypeDefinitionProvider(languageId: string, provider: TypeDefinitionProvider): IDisposable;
+    export function registerTypeDefinitionProvider(languageSelector: LanguageSelector, provider: TypeDefinitionProvider): IDisposable;
 
     /**
      * Register a code lens provider (used by e.g. inline code lenses).
      */
-    export function registerCodeLensProvider(languageId: string, provider: CodeLensProvider): IDisposable;
+    export function registerCodeLensProvider(languageSelector: LanguageSelector, provider: CodeLensProvider): IDisposable;
 
     /**
      * Register a code action provider (used by e.g. quick fix).
      */
-    export function registerCodeActionProvider(languageId: string, provider: CodeActionProvider, metadata?: CodeActionProviderMetadata): IDisposable;
+    export function registerCodeActionProvider(languageSelector: LanguageSelector, provider: CodeActionProvider, metadata?: CodeActionProviderMetadata): IDisposable;
 
     /**
      * Register a formatter that can handle only entire models.
      */
-    export function registerDocumentFormattingEditProvider(languageId: string, provider: DocumentFormattingEditProvider): IDisposable;
+    export function registerDocumentFormattingEditProvider(languageSelector: LanguageSelector, provider: DocumentFormattingEditProvider): IDisposable;
 
     /**
      * Register a formatter that can handle a range inside a model.
      */
-    export function registerDocumentRangeFormattingEditProvider(languageId: string, provider: DocumentRangeFormattingEditProvider): IDisposable;
+    export function registerDocumentRangeFormattingEditProvider(languageSelector: LanguageSelector, provider: DocumentRangeFormattingEditProvider): IDisposable;
 
     /**
      * Register a formatter than can do formatting as the user types.
      */
-    export function registerOnTypeFormattingEditProvider(languageId: string, provider: OnTypeFormattingEditProvider): IDisposable;
+    export function registerOnTypeFormattingEditProvider(languageSelector: LanguageSelector, provider: OnTypeFormattingEditProvider): IDisposable;
 
     /**
      * Register a link provider that can find links in text.
      */
-    export function registerLinkProvider(languageId: string, provider: LinkProvider): IDisposable;
+    export function registerLinkProvider(languageSelector: LanguageSelector, provider: LinkProvider): IDisposable;
 
     /**
      * Register a completion item provider (use by e.g. suggestions).
      */
-    export function registerCompletionItemProvider(languageId: string, provider: CompletionItemProvider): IDisposable;
+    export function registerCompletionItemProvider(languageSelector: LanguageSelector, provider: CompletionItemProvider): IDisposable;
 
     /**
      * Register a document color provider (used by Color Picker, Color Decorator).
      */
-    export function registerColorProvider(languageId: string, provider: DocumentColorProvider): IDisposable;
+    export function registerColorProvider(languageSelector: LanguageSelector, provider: DocumentColorProvider): IDisposable;
 
     /**
      * Register a folding range provider
      */
-    export function registerFoldingRangeProvider(languageId: string, provider: FoldingRangeProvider): IDisposable;
+    export function registerFoldingRangeProvider(languageSelector: LanguageSelector, provider: FoldingRangeProvider): IDisposable;
 
     /**
      * Register a declaration provider
      */
-    export function registerDeclarationProvider(languageId: string, provider: DeclarationProvider): IDisposable;
+    export function registerDeclarationProvider(languageSelector: LanguageSelector, provider: DeclarationProvider): IDisposable;
 
     /**
      * Register a selection range provider
      */
-    export function registerSelectionRangeProvider(languageId: string, provider: SelectionRangeProvider): IDisposable;
+    export function registerSelectionRangeProvider(languageSelector: LanguageSelector, provider: SelectionRangeProvider): IDisposable;
 
     /**
      * Register a document semantic tokens provider. A semantic tokens provider will complement and enhance a
@@ -5655,7 +5830,7 @@ declare namespace monaco.languages {
      *
      * For the best user experience, register both a semantic tokens provider and a top-down tokenizer.
      */
-    export function registerDocumentSemanticTokensProvider(languageId: string, provider: DocumentSemanticTokensProvider): IDisposable;
+    export function registerDocumentSemanticTokensProvider(languageSelector: LanguageSelector, provider: DocumentSemanticTokensProvider): IDisposable;
 
     /**
      * Register a document range semantic tokens provider. A semantic tokens provider will complement and enhance a
@@ -5664,17 +5839,17 @@ declare namespace monaco.languages {
      *
      * For the best user experience, register both a semantic tokens provider and a top-down tokenizer.
      */
-    export function registerDocumentRangeSemanticTokensProvider(languageId: string, provider: DocumentRangeSemanticTokensProvider): IDisposable;
+    export function registerDocumentRangeSemanticTokensProvider(languageSelector: LanguageSelector, provider: DocumentRangeSemanticTokensProvider): IDisposable;
 
     /**
      * Register an inline completions provider.
      */
-    export function registerInlineCompletionsProvider(languageId: string, provider: InlineCompletionsProvider): IDisposable;
+    export function registerInlineCompletionsProvider(languageSelector: LanguageSelector, provider: InlineCompletionsProvider): IDisposable;
 
     /**
      * Register an inlay hints provider.
      */
-    export function registerInlayHintsProvider(languageId: string, provider: InlayHintsProvider): IDisposable;
+    export function registerInlayHintsProvider(languageSelector: LanguageSelector, provider: InlayHintsProvider): IDisposable;
 
     /**
      * Contains additional diagnostic information about the context in which
@@ -6065,7 +6240,7 @@ declare namespace monaco.languages {
          * The kind of this completion item. Based on the kind
          * an icon is chosen by the editor.
          */
-        kind: CompletionItemKind;
+        kind: CompletionItemKind | number;
         /**
          * A modifier to the `kind` which affect how the item
          * is rendered, e.g. Deprecated is rendered with a strikeout
@@ -6230,8 +6405,24 @@ declare namespace monaco.languages {
          * The text to insert.
          * If the text contains a line break, the range must end at the end of a line.
          * If existing text should be replaced, the existing text must be a prefix of the text to insert.
+         *
+         * The text can also be a snippet. In that case, a preview with default parameters is shown.
+         * When accepting the suggestion, the full snippet is inserted.
         */
-        readonly text: string;
+        readonly insertText: string | {
+            snippet: string;
+        };
+        /**
+         * A text that is used to decide if this inline completion should be shown.
+         * An inline completion is shown if the text to replace is a subword of the filter text.
+         */
+        readonly filterText?: string;
+        /**
+         * An optional array of additional text edits that are applied when
+         * selecting this completion. Edits must not overlap with the main edit
+         * nor with themselves.
+         */
+        readonly additionalTextEdits?: editor.ISingleEditOperation[];
         /**
          * The range to replace.
          * Must begin and end on the same line.
@@ -6922,7 +7113,7 @@ declare namespace monaco.languages {
     export interface InlayHint {
         label: string | InlayHintLabelPart[];
         tooltip?: string | IMarkdownString;
-        command?: Command;
+        textEdits?: TextEdit[];
         position: IPosition;
         kind?: InlayHintKind;
         paddingLeft?: boolean;
@@ -7151,844 +7342,3 @@ declare namespace monaco.worker {
 
 //dtsv=3
 
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
-declare namespace monaco.languages.css {
-    export interface Options {
-        readonly validate?: boolean;
-        readonly lint?: {
-            readonly compatibleVendorPrefixes?: 'ignore' | 'warning' | 'error';
-            readonly vendorPrefix?: 'ignore' | 'warning' | 'error';
-            readonly duplicateProperties?: 'ignore' | 'warning' | 'error';
-            readonly emptyRules?: 'ignore' | 'warning' | 'error';
-            readonly importStatement?: 'ignore' | 'warning' | 'error';
-            readonly boxModel?: 'ignore' | 'warning' | 'error';
-            readonly universalSelector?: 'ignore' | 'warning' | 'error';
-            readonly zeroUnits?: 'ignore' | 'warning' | 'error';
-            readonly fontFaceProperties?: 'ignore' | 'warning' | 'error';
-            readonly hexColorLength?: 'ignore' | 'warning' | 'error';
-            readonly argumentsInColorFunction?: 'ignore' | 'warning' | 'error';
-            readonly unknownProperties?: 'ignore' | 'warning' | 'error';
-            readonly ieHack?: 'ignore' | 'warning' | 'error';
-            readonly unknownVendorSpecificProperties?: 'ignore' | 'warning' | 'error';
-            readonly propertyIgnoredDueToDisplay?: 'ignore' | 'warning' | 'error';
-            readonly important?: 'ignore' | 'warning' | 'error';
-            readonly float?: 'ignore' | 'warning' | 'error';
-            readonly idSelector?: 'ignore' | 'warning' | 'error';
-        };
-        /**
-         * Configures the CSS data types known by the langauge service.
-         */
-        readonly data?: CSSDataConfiguration;
-    }
-    export interface ModeConfiguration {
-        /**
-         * Defines whether the built-in completionItemProvider is enabled.
-         */
-        readonly completionItems?: boolean;
-        /**
-         * Defines whether the built-in hoverProvider is enabled.
-         */
-        readonly hovers?: boolean;
-        /**
-         * Defines whether the built-in documentSymbolProvider is enabled.
-         */
-        readonly documentSymbols?: boolean;
-        /**
-         * Defines whether the built-in definitions provider is enabled.
-         */
-        readonly definitions?: boolean;
-        /**
-         * Defines whether the built-in references provider is enabled.
-         */
-        readonly references?: boolean;
-        /**
-         * Defines whether the built-in references provider is enabled.
-         */
-        readonly documentHighlights?: boolean;
-        /**
-         * Defines whether the built-in rename provider is enabled.
-         */
-        readonly rename?: boolean;
-        /**
-         * Defines whether the built-in color provider is enabled.
-         */
-        readonly colors?: boolean;
-        /**
-         * Defines whether the built-in foldingRange provider is enabled.
-         */
-        readonly foldingRanges?: boolean;
-        /**
-         * Defines whether the built-in diagnostic provider is enabled.
-         */
-        readonly diagnostics?: boolean;
-        /**
-         * Defines whether the built-in selection range provider is enabled.
-         */
-        readonly selectionRanges?: boolean;
-    }
-    export interface LanguageServiceDefaults {
-        readonly languageId: string;
-        readonly onDidChange: IEvent<LanguageServiceDefaults>;
-        readonly modeConfiguration: ModeConfiguration;
-        readonly options: Options;
-        setOptions(options: Options): void;
-        setModeConfiguration(modeConfiguration: ModeConfiguration): void;
-        /** @deprecated Use options instead */
-        readonly diagnosticsOptions: DiagnosticsOptions;
-        /** @deprecated Use setOptions instead */
-        setDiagnosticsOptions(options: DiagnosticsOptions): void;
-    }
-    /** @deprecated Use Options instead */
-    export type DiagnosticsOptions = Options;
-    export const cssDefaults: LanguageServiceDefaults;
-    export const scssDefaults: LanguageServiceDefaults;
-    export const lessDefaults: LanguageServiceDefaults;
-    export interface CSSDataConfiguration {
-        /**
-         * Defines whether the standard CSS properties, at-directives, pseudoClasses and pseudoElements are shown.
-         */
-        useDefaultDataProvider?: boolean;
-        /**
-         * Provides a set of custom data providers.
-         */
-        dataProviders?: {
-            [providerId: string]: CSSDataV1;
-        };
-    }
-    /**
-     * Custom CSS properties, at-directives, pseudoClasses and pseudoElements
-     * https://github.com/microsoft/vscode-css-languageservice/blob/main/docs/customData.md
-     */
-    export interface CSSDataV1 {
-        version: 1 | 1.1;
-        properties?: IPropertyData[];
-        atDirectives?: IAtDirectiveData[];
-        pseudoClasses?: IPseudoClassData[];
-        pseudoElements?: IPseudoElementData[];
-    }
-    export type EntryStatus = 'standard' | 'experimental' | 'nonstandard' | 'obsolete';
-    export interface IReference {
-        name: string;
-        url: string;
-    }
-    export interface IPropertyData {
-        name: string;
-        description?: string | MarkupContent;
-        browsers?: string[];
-        restrictions?: string[];
-        status?: EntryStatus;
-        syntax?: string;
-        values?: IValueData[];
-        references?: IReference[];
-        relevance?: number;
-    }
-    export interface IAtDirectiveData {
-        name: string;
-        description?: string | MarkupContent;
-        browsers?: string[];
-        status?: EntryStatus;
-        references?: IReference[];
-    }
-    export interface IPseudoClassData {
-        name: string;
-        description?: string | MarkupContent;
-        browsers?: string[];
-        status?: EntryStatus;
-        references?: IReference[];
-    }
-    export interface IPseudoElementData {
-        name: string;
-        description?: string | MarkupContent;
-        browsers?: string[];
-        status?: EntryStatus;
-        references?: IReference[];
-    }
-    export interface IValueData {
-        name: string;
-        description?: string | MarkupContent;
-        browsers?: string[];
-        status?: EntryStatus;
-        references?: IReference[];
-    }
-    export interface MarkupContent {
-        kind: MarkupKind;
-        value: string;
-    }
-    export type MarkupKind = 'plaintext' | 'markdown';
-}
-
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
-declare namespace monaco.languages.html {
-    export interface HTMLFormatConfiguration {
-        readonly tabSize: number;
-        readonly insertSpaces: boolean;
-        readonly wrapLineLength: number;
-        readonly unformatted: string;
-        readonly contentUnformatted: string;
-        readonly indentInnerHtml: boolean;
-        readonly preserveNewLines: boolean;
-        readonly maxPreserveNewLines: number | undefined;
-        readonly indentHandlebars: boolean;
-        readonly endWithNewline: boolean;
-        readonly extraLiners: string;
-        readonly wrapAttributes: 'auto' | 'force' | 'force-aligned' | 'force-expand-multiline';
-    }
-    export interface CompletionConfiguration {
-        readonly [providerId: string]: boolean;
-    }
-    export interface Options {
-        /**
-         * If set, comments are tolerated. If set to false, syntax errors will be emitted for comments.
-         */
-        readonly format?: HTMLFormatConfiguration;
-        /**
-         * A list of known schemas and/or associations of schemas to file names.
-         */
-        readonly suggest?: CompletionConfiguration;
-        /**
-         * Configures the HTML data types known by the HTML langauge service.
-         */
-        readonly data?: HTMLDataConfiguration;
-    }
-    export interface ModeConfiguration {
-        /**
-         * Defines whether the built-in completionItemProvider is enabled.
-         */
-        readonly completionItems?: boolean;
-        /**
-         * Defines whether the built-in hoverProvider is enabled.
-         */
-        readonly hovers?: boolean;
-        /**
-         * Defines whether the built-in documentSymbolProvider is enabled.
-         */
-        readonly documentSymbols?: boolean;
-        /**
-         * Defines whether the built-in definitions provider is enabled.
-         */
-        readonly links?: boolean;
-        /**
-         * Defines whether the built-in references provider is enabled.
-         */
-        readonly documentHighlights?: boolean;
-        /**
-         * Defines whether the built-in rename provider is enabled.
-         */
-        readonly rename?: boolean;
-        /**
-         * Defines whether the built-in color provider is enabled.
-         */
-        readonly colors?: boolean;
-        /**
-         * Defines whether the built-in foldingRange provider is enabled.
-         */
-        readonly foldingRanges?: boolean;
-        /**
-         * Defines whether the built-in diagnostic provider is enabled.
-         */
-        readonly diagnostics?: boolean;
-        /**
-         * Defines whether the built-in selection range provider is enabled.
-         */
-        readonly selectionRanges?: boolean;
-        /**
-         * Defines whether the built-in documentFormattingEdit provider is enabled.
-         */
-        readonly documentFormattingEdits?: boolean;
-        /**
-         * Defines whether the built-in documentRangeFormattingEdit provider is enabled.
-         */
-        readonly documentRangeFormattingEdits?: boolean;
-    }
-    export interface LanguageServiceDefaults {
-        readonly languageId: string;
-        readonly modeConfiguration: ModeConfiguration;
-        readonly onDidChange: IEvent<LanguageServiceDefaults>;
-        readonly options: Options;
-        setOptions(options: Options): void;
-        setModeConfiguration(modeConfiguration: ModeConfiguration): void;
-    }
-    export const htmlLanguageService: LanguageServiceRegistration;
-    export const htmlDefaults: LanguageServiceDefaults;
-    export const handlebarLanguageService: LanguageServiceRegistration;
-    export const handlebarDefaults: LanguageServiceDefaults;
-    export const razorLanguageService: LanguageServiceRegistration;
-    export const razorDefaults: LanguageServiceDefaults;
-    export interface LanguageServiceRegistration extends IDisposable {
-        readonly defaults: LanguageServiceDefaults;
-    }
-    /**
-     * Registers a new HTML language service for the languageId.
-     * Note: 'html', 'handlebar' and 'razor' are registered by default.
-     *
-     * Use this method to register additional language ids with a HTML service.
-     * The language server has to be registered before an editor model is opened.
-     */
-    export function registerHTMLLanguageService(languageId: string, options?: Options, modeConfiguration?: ModeConfiguration): LanguageServiceRegistration;
-    export interface HTMLDataConfiguration {
-        /**
-         * Defines whether the standard HTML tags and attributes are shown
-         */
-        readonly useDefaultDataProvider?: boolean;
-        /**
-         * Provides a set of custom data providers.
-         */
-        readonly dataProviders?: {
-            [providerId: string]: HTMLDataV1;
-        };
-    }
-    /**
-     * Custom HTML tags attributes and attribute values
-     * https://github.com/microsoft/vscode-html-languageservice/blob/main/docs/customData.md
-     */
-    export interface HTMLDataV1 {
-        readonly version: 1 | 1.1;
-        readonly tags?: ITagData[];
-        readonly globalAttributes?: IAttributeData[];
-        readonly valueSets?: IValueSet[];
-    }
-    export interface IReference {
-        readonly name: string;
-        readonly url: string;
-    }
-    export interface ITagData {
-        readonly name: string;
-        readonly description?: string | MarkupContent;
-        readonly attributes: IAttributeData[];
-        readonly references?: IReference[];
-    }
-    export interface IAttributeData {
-        readonly name: string;
-        readonly description?: string | MarkupContent;
-        readonly valueSet?: string;
-        readonly values?: IValueData[];
-        readonly references?: IReference[];
-    }
-    export interface IValueData {
-        readonly name: string;
-        readonly description?: string | MarkupContent;
-        readonly references?: IReference[];
-    }
-    export interface IValueSet {
-        readonly name: string;
-        readonly values: IValueData[];
-    }
-    export interface MarkupContent {
-        readonly kind: MarkupKind;
-        readonly value: string;
-    }
-    export type MarkupKind = 'plaintext' | 'markdown';
-}
-
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
-declare namespace monaco.languages.json {
-    export interface DiagnosticsOptions {
-        /**
-         * If set, the validator will be enabled and perform syntax and schema based validation,
-         * unless `DiagnosticsOptions.schemaValidation` is set to `ignore`.
-         */
-        readonly validate?: boolean;
-        /**
-         * If set, comments are tolerated. If set to false, syntax errors will be emitted for comments.
-         * `DiagnosticsOptions.allowComments` will override this setting.
-         */
-        readonly allowComments?: boolean;
-        /**
-         * A list of known schemas and/or associations of schemas to file names.
-         */
-        readonly schemas?: {
-            /**
-             * The URI of the schema, which is also the identifier of the schema.
-             */
-            readonly uri: string;
-            /**
-             * A list of glob patterns that describe for which file URIs the JSON schema will be used.
-             * '*' and '**' wildcards are supported. Exclusion patterns start with '!'.
-             * For example '*.schema.json', 'package.json', '!foo*.schema.json', 'foo/**\/BADRESP.json'.
-             * A match succeeds when there is at least one pattern matching and last matching pattern does not start with '!'.
-             */
-            readonly fileMatch?: string[];
-            /**
-             * The schema for the given URI.
-             */
-            readonly schema?: any;
-        }[];
-        /**
-         *  If set, the schema service would load schema content on-demand with 'fetch' if available
-         */
-        readonly enableSchemaRequest?: boolean;
-        /**
-         * The severity of problems from schema validation. If set to 'ignore', schema validation will be skipped. If not set, 'warning' is used.
-         */
-        readonly schemaValidation?: SeverityLevel;
-        /**
-         * The severity of problems that occurred when resolving and loading schemas. If set to 'ignore', schema resolving problems are not reported. If not set, 'warning' is used.
-         */
-        readonly schemaRequest?: SeverityLevel;
-        /**
-         * The severity of reported trailing commas. If not set, trailing commas will be reported as errors.
-         */
-        readonly trailingCommas?: SeverityLevel;
-        /**
-         * The severity of reported comments. If not set, 'DiagnosticsOptions.allowComments' defines whether comments are ignored or reported as errors.
-         */
-        readonly comments?: SeverityLevel;
-    }
-    export type SeverityLevel = 'error' | 'warning' | 'ignore';
-    export interface ModeConfiguration {
-        /**
-         * Defines whether the built-in documentFormattingEdit provider is enabled.
-         */
-        readonly documentFormattingEdits?: boolean;
-        /**
-         * Defines whether the built-in documentRangeFormattingEdit provider is enabled.
-         */
-        readonly documentRangeFormattingEdits?: boolean;
-        /**
-         * Defines whether the built-in completionItemProvider is enabled.
-         */
-        readonly completionItems?: boolean;
-        /**
-         * Defines whether the built-in hoverProvider is enabled.
-         */
-        readonly hovers?: boolean;
-        /**
-         * Defines whether the built-in documentSymbolProvider is enabled.
-         */
-        readonly documentSymbols?: boolean;
-        /**
-         * Defines whether the built-in tokens provider is enabled.
-         */
-        readonly tokens?: boolean;
-        /**
-         * Defines whether the built-in color provider is enabled.
-         */
-        readonly colors?: boolean;
-        /**
-         * Defines whether the built-in foldingRange provider is enabled.
-         */
-        readonly foldingRanges?: boolean;
-        /**
-         * Defines whether the built-in diagnostic provider is enabled.
-         */
-        readonly diagnostics?: boolean;
-        /**
-         * Defines whether the built-in selection range provider is enabled.
-         */
-        readonly selectionRanges?: boolean;
-    }
-    export interface LanguageServiceDefaults {
-        readonly languageId: string;
-        readonly onDidChange: IEvent<LanguageServiceDefaults>;
-        readonly diagnosticsOptions: DiagnosticsOptions;
-        readonly modeConfiguration: ModeConfiguration;
-        setDiagnosticsOptions(options: DiagnosticsOptions): void;
-        setModeConfiguration(modeConfiguration: ModeConfiguration): void;
-    }
-    export const jsonDefaults: LanguageServiceDefaults;
-}
-
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
- *--------------------------------------------------------------------------------------------*/
-
-declare namespace monaco.languages.typescript {
-    export enum ModuleKind {
-        None = 0,
-        CommonJS = 1,
-        AMD = 2,
-        UMD = 3,
-        System = 4,
-        ES2015 = 5,
-        ESNext = 99
-    }
-    export enum JsxEmit {
-        None = 0,
-        Preserve = 1,
-        React = 2,
-        ReactNative = 3,
-        ReactJSX = 4,
-        ReactJSXDev = 5
-    }
-    export enum NewLineKind {
-        CarriageReturnLineFeed = 0,
-        LineFeed = 1
-    }
-    export enum ScriptTarget {
-        ES3 = 0,
-        ES5 = 1,
-        ES2015 = 2,
-        ES2016 = 3,
-        ES2017 = 4,
-        ES2018 = 5,
-        ES2019 = 6,
-        ES2020 = 7,
-        ESNext = 99,
-        JSON = 100,
-        Latest = 99
-    }
-    export enum ModuleResolutionKind {
-        Classic = 1,
-        NodeJs = 2
-    }
-    interface MapLike<T> {
-        [index: string]: T;
-    }
-    type CompilerOptionsValue = string | number | boolean | (string | number)[] | string[] | MapLike<string[]> | null | undefined;
-    interface CompilerOptions {
-        allowJs?: boolean;
-        allowSyntheticDefaultImports?: boolean;
-        allowUmdGlobalAccess?: boolean;
-        allowUnreachableCode?: boolean;
-        allowUnusedLabels?: boolean;
-        alwaysStrict?: boolean;
-        baseUrl?: string;
-        charset?: string;
-        checkJs?: boolean;
-        declaration?: boolean;
-        declarationMap?: boolean;
-        emitDeclarationOnly?: boolean;
-        declarationDir?: string;
-        disableSizeLimit?: boolean;
-        disableSourceOfProjectReferenceRedirect?: boolean;
-        downlevelIteration?: boolean;
-        emitBOM?: boolean;
-        emitDecoratorMetadata?: boolean;
-        experimentalDecorators?: boolean;
-        forceConsistentCasingInFileNames?: boolean;
-        importHelpers?: boolean;
-        inlineSourceMap?: boolean;
-        inlineSources?: boolean;
-        isolatedModules?: boolean;
-        jsx?: JsxEmit;
-        keyofStringsOnly?: boolean;
-        lib?: string[];
-        locale?: string;
-        mapRoot?: string;
-        maxNodeModuleJsDepth?: number;
-        module?: ModuleKind;
-        moduleResolution?: ModuleResolutionKind;
-        newLine?: NewLineKind;
-        noEmit?: boolean;
-        noEmitHelpers?: boolean;
-        noEmitOnError?: boolean;
-        noErrorTruncation?: boolean;
-        noFallthroughCasesInSwitch?: boolean;
-        noImplicitAny?: boolean;
-        noImplicitReturns?: boolean;
-        noImplicitThis?: boolean;
-        noStrictGenericChecks?: boolean;
-        noUnusedLocals?: boolean;
-        noUnusedParameters?: boolean;
-        noImplicitUseStrict?: boolean;
-        noLib?: boolean;
-        noResolve?: boolean;
-        out?: string;
-        outDir?: string;
-        outFile?: string;
-        paths?: MapLike<string[]>;
-        preserveConstEnums?: boolean;
-        preserveSymlinks?: boolean;
-        project?: string;
-        reactNamespace?: string;
-        jsxFactory?: string;
-        composite?: boolean;
-        removeComments?: boolean;
-        rootDir?: string;
-        rootDirs?: string[];
-        skipLibCheck?: boolean;
-        skipDefaultLibCheck?: boolean;
-        sourceMap?: boolean;
-        sourceRoot?: string;
-        strict?: boolean;
-        strictFunctionTypes?: boolean;
-        strictBindCallApply?: boolean;
-        strictNullChecks?: boolean;
-        strictPropertyInitialization?: boolean;
-        stripInternal?: boolean;
-        suppressExcessPropertyErrors?: boolean;
-        suppressImplicitAnyIndexErrors?: boolean;
-        target?: ScriptTarget;
-        traceResolution?: boolean;
-        resolveJsonModule?: boolean;
-        types?: string[];
-        /** Paths used to compute primary types search locations */
-        typeRoots?: string[];
-        esModuleInterop?: boolean;
-        useDefineForClassFields?: boolean;
-        [option: string]: CompilerOptionsValue | undefined;
-    }
-    export interface DiagnosticsOptions {
-        noSemanticValidation?: boolean;
-        noSyntaxValidation?: boolean;
-        noSuggestionDiagnostics?: boolean;
-        /**
-         * Limit diagnostic computation to only visible files.
-         * Defaults to false.
-         */
-        onlyVisible?: boolean;
-        diagnosticCodesToIgnore?: number[];
-    }
-    export interface WorkerOptions {
-        /** A full HTTP path to a JavaScript file which adds a function `customTSWorkerFactory` to the self inside a web-worker */
-        customWorkerPath?: string;
-    }
-    interface InlayHintsOptions {
-        readonly includeInlayParameterNameHints?: 'none' | 'literals' | 'all';
-        readonly includeInlayParameterNameHintsWhenArgumentMatchesName?: boolean;
-        readonly includeInlayFunctionParameterTypeHints?: boolean;
-        readonly includeInlayVariableTypeHints?: boolean;
-        readonly includeInlayPropertyDeclarationTypeHints?: boolean;
-        readonly includeInlayFunctionLikeReturnTypeHints?: boolean;
-        readonly includeInlayEnumMemberValueHints?: boolean;
-    }
-    interface IExtraLib {
-        content: string;
-        version: number;
-    }
-    export interface IExtraLibs {
-        [path: string]: IExtraLib;
-    }
-    /**
-     * A linked list of formatted diagnostic messages to be used as part of a multiline message.
-     * It is built from the bottom up, leaving the head to be the "main" diagnostic.
-     */
-    interface DiagnosticMessageChain {
-        messageText: string;
-        /** Diagnostic category: warning = 0, error = 1, suggestion = 2, message = 3 */
-        category: 0 | 1 | 2 | 3;
-        code: number;
-        next?: DiagnosticMessageChain[];
-    }
-    export interface Diagnostic extends DiagnosticRelatedInformation {
-        /** May store more in future. For now, this will simply be `true` to indicate when a diagnostic is an unused-identifier diagnostic. */
-        reportsUnnecessary?: {};
-        reportsDeprecated?: {};
-        source?: string;
-        relatedInformation?: DiagnosticRelatedInformation[];
-    }
-    export interface DiagnosticRelatedInformation {
-        /** Diagnostic category: warning = 0, error = 1, suggestion = 2, message = 3 */
-        category: 0 | 1 | 2 | 3;
-        code: number;
-        /** TypeScriptWorker removes all but the `fileName` property to avoid serializing circular JSON structures. */
-        file: {
-            fileName: string;
-        } | undefined;
-        start: number | undefined;
-        length: number | undefined;
-        messageText: string | DiagnosticMessageChain;
-    }
-    interface EmitOutput {
-        outputFiles: OutputFile[];
-        emitSkipped: boolean;
-    }
-    interface OutputFile {
-        name: string;
-        writeByteOrderMark: boolean;
-        text: string;
-    }
-    export interface LanguageServiceDefaults {
-        /**
-         * Event fired when compiler options or diagnostics options are changed.
-         */
-        readonly onDidChange: IEvent<void>;
-        /**
-         * Event fired when extra libraries registered with the language service change.
-         */
-        readonly onDidExtraLibsChange: IEvent<void>;
-        readonly workerOptions: WorkerOptions;
-        readonly inlayHintsOptions: InlayHintsOptions;
-        /**
-         * Get the current extra libs registered with the language service.
-         */
-        getExtraLibs(): IExtraLibs;
-        /**
-         * Add an additional source file to the language service. Use this
-         * for typescript (definition) files that won't be loaded as editor
-         * documents, like `jquery.d.ts`.
-         *
-         * @param content The file content
-         * @param filePath An optional file path
-         * @returns A disposable which will remove the file from the
-         * language service upon disposal.
-         */
-        addExtraLib(content: string, filePath?: string): IDisposable;
-        /**
-         * Remove all existing extra libs and set the additional source
-         * files to the language service. Use this for typescript definition
-         * files that won't be loaded as editor documents, like `jquery.d.ts`.
-         * @param libs An array of entries to register.
-         */
-        setExtraLibs(libs: {
-            content: string;
-            filePath?: string;
-        }[]): void;
-        /**
-         * Get current TypeScript compiler options for the language service.
-         */
-        getCompilerOptions(): CompilerOptions;
-        /**
-         * Set TypeScript compiler options.
-         */
-        setCompilerOptions(options: CompilerOptions): void;
-        /**
-         * Get the current diagnostics options for the language service.
-         */
-        getDiagnosticsOptions(): DiagnosticsOptions;
-        /**
-         * Configure whether syntactic and/or semantic validation should
-         * be performed
-         */
-        setDiagnosticsOptions(options: DiagnosticsOptions): void;
-        /**
-         * Configure webworker options
-         */
-        setWorkerOptions(options: WorkerOptions): void;
-        /**
-         * No-op.
-         */
-        setMaximumWorkerIdleTime(value: number): void;
-        /**
-         * Configure if all existing models should be eagerly sync'd
-         * to the worker on start or restart.
-         */
-        setEagerModelSync(value: boolean): void;
-        /**
-         * Get the current setting for whether all existing models should be eagerly sync'd
-         * to the worker on start or restart.
-         */
-        getEagerModelSync(): boolean;
-        /**
-         * Configure inlay hints options.
-         */
-        setInlayHintsOptions(options: InlayHintsOptions): void;
-    }
-    export interface TypeScriptWorker {
-        /**
-         * Get diagnostic messages for any syntax issues in the given file.
-         */
-        getSyntacticDiagnostics(fileName: string): Promise<Diagnostic[]>;
-        /**
-         * Get diagnostic messages for any semantic issues in the given file.
-         */
-        getSemanticDiagnostics(fileName: string): Promise<Diagnostic[]>;
-        /**
-         * Get diagnostic messages for any suggestions related to the given file.
-         */
-        getSuggestionDiagnostics(fileName: string): Promise<Diagnostic[]>;
-        /**
-         * Get the content of a given file.
-         */
-        getScriptText(fileName: string): Promise<string | undefined>;
-        /**
-         * Get diagnostic messages related to the current compiler options.
-         * @param fileName Not used
-         */
-        getCompilerOptionsDiagnostics(fileName: string): Promise<Diagnostic[]>;
-        /**
-         * Get code completions for the given file and position.
-         * @returns `Promise<typescript.CompletionInfo | undefined>`
-         */
-        getCompletionsAtPosition(fileName: string, position: number): Promise<any | undefined>;
-        /**
-         * Get code completion details for the given file, position, and entry.
-         * @returns `Promise<typescript.CompletionEntryDetails | undefined>`
-         */
-        getCompletionEntryDetails(fileName: string, position: number, entry: string): Promise<any | undefined>;
-        /**
-         * Get signature help items for the item at the given file and position.
-         * @returns `Promise<typescript.SignatureHelpItems | undefined>`
-         */
-        getSignatureHelpItems(fileName: string, position: number, options: any): Promise<any | undefined>;
-        /**
-         * Get quick info for the item at the given position in the file.
-         * @returns `Promise<typescript.QuickInfo | undefined>`
-         */
-        getQuickInfoAtPosition(fileName: string, position: number): Promise<any | undefined>;
-        /**
-         * Get other ranges which are related to the item at the given position in the file (often used for highlighting).
-         * @returns `Promise<ReadonlyArray<typescript.ReferenceEntry> | undefined>`
-         */
-        getOccurrencesAtPosition(fileName: string, position: number): Promise<ReadonlyArray<any> | undefined>;
-        /**
-         * Get the definition of the item at the given position in the file.
-         * @returns `Promise<ReadonlyArray<typescript.DefinitionInfo> | undefined>`
-         */
-        getDefinitionAtPosition(fileName: string, position: number): Promise<ReadonlyArray<any> | undefined>;
-        /**
-         * Get references to the item at the given position in the file.
-         * @returns `Promise<typescript.ReferenceEntry[] | undefined>`
-         */
-        getReferencesAtPosition(fileName: string, position: number): Promise<any[] | undefined>;
-        /**
-         * Get outline entries for the item at the given position in the file.
-         * @returns `Promise<typescript.NavigationBarItem[]>`
-         */
-        getNavigationBarItems(fileName: string): Promise<any[]>;
-        /**
-         * Get changes which should be applied to format the given file.
-         * @param options `typescript.FormatCodeOptions`
-         * @returns `Promise<typescript.TextChange[]>`
-         */
-        getFormattingEditsForDocument(fileName: string, options: any): Promise<any[]>;
-        /**
-         * Get changes which should be applied to format the given range in the file.
-         * @param options `typescript.FormatCodeOptions`
-         * @returns `Promise<typescript.TextChange[]>`
-         */
-        getFormattingEditsForRange(fileName: string, start: number, end: number, options: any): Promise<any[]>;
-        /**
-         * Get formatting changes which should be applied after the given keystroke.
-         * @param options `typescript.FormatCodeOptions`
-         * @returns `Promise<typescript.TextChange[]>`
-         */
-        getFormattingEditsAfterKeystroke(fileName: string, postion: number, ch: string, options: any): Promise<any[]>;
-        /**
-         * Get other occurrences which should be updated when renaming the item at the given file and position.
-         * @returns `Promise<readonly typescript.RenameLocation[] | undefined>`
-         */
-        findRenameLocations(fileName: string, positon: number, findInStrings: boolean, findInComments: boolean, providePrefixAndSuffixTextForRename: boolean): Promise<readonly any[] | undefined>;
-        /**
-         * Get edits which should be applied to rename the item at the given file and position (or a failure reason).
-         * @param options `typescript.RenameInfoOptions`
-         * @returns `Promise<typescript.RenameInfo>`
-         */
-        getRenameInfo(fileName: string, positon: number, options: any): Promise<any>;
-        /**
-         * Get transpiled output for the given file.
-         * @returns `typescript.EmitOutput`
-         */
-        getEmitOutput(fileName: string): Promise<EmitOutput>;
-        /**
-         * Get possible code fixes at the given position in the file.
-         * @param formatOptions `typescript.FormatCodeOptions`
-         * @returns `Promise<ReadonlyArray<typescript.CodeFixAction>>`
-         */
-        getCodeFixesAtPosition(fileName: string, start: number, end: number, errorCodes: number[], formatOptions: any): Promise<ReadonlyArray<any>>;
-        /**
-         * Get inlay hints in the range of the file.
-         * @param fileName
-         * @returns `Promise<typescript.InlayHint[]>`
-         */
-        provideInlayHints(fileName: string, start: number, end: number): Promise<ReadonlyArray<any>>;
-    }
-    export const typescriptVersion: string;
-    export const typescriptDefaults: LanguageServiceDefaults;
-    export const javascriptDefaults: LanguageServiceDefaults;
-    export const getTypeScriptWorker: () => Promise<(...uris: Uri[]) => Promise<TypeScriptWorker>>;
-    export const getJavaScriptWorker: () => Promise<(...uris: Uri[]) => Promise<TypeScriptWorker>>;
-}
