@@ -46,7 +46,7 @@ async function prepareMonacoEditorCoreRelease(version: string, vscodeRef: string
 	await group('Checkout vscode', async () => {
 		const result = await gitShallowClone(
 			vscodePath,
-			'https://github.com/microsoft/vscode.git',
+			'https://github.com/Megaputer/vscode.git',
 			vscodeRef
 		);
 		vscodeCommitId = result.commitId;
@@ -56,7 +56,7 @@ async function prepareMonacoEditorCoreRelease(version: string, vscodeRef: string
 		await gitShallowClone(
 			// Must be a sibling to the vscode repository
 			'dependencies/vscode-loc',
-			'https://github.com/microsoft/vscode-loc.git',
+			'https://github.com/Megaputer/vscode-loc.git',
 			'main'
 		);
 	});

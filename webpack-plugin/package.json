@@ -1,5 +1,5 @@
 {
-	"name": "monaco-editor-webpack-plugin",
+	"name": "@megaputer/monaco-editor-webpack-plugin",
 	"version": "7.1.0",
 	"description": "A webpack plugin for the Monaco Editor",
 	"main": "out/index.js",
@@ -11,7 +11,7 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/microsoft/monaco-editor.git"
+		"url": "git+https://github.com/Megaputer/monaco-editor.git"
 	},
 	"keywords": [
 		"webpack",
@@ -22,18 +22,18 @@
 	"author": "Microsoft Corporation",
 	"license": "MIT",
 	"bugs": {
-		"url": "https://github.com/microsoft/monaco-editor/issues"
+		"url": "https://github.com/Megaputer/monaco-editor/issues"
 	},
-	"homepage": "https://github.com/microsoft/monaco-editor#readme",
+	"homepage": "https://github.com/Megaputer/monaco-editor#readme",
 	"peerDependencies": {
 		"webpack": "^4.5.0 || 5.x",
-		"monaco-editor": ">= 0.31.0"
+		"@megaputer/monaco-editor": ">= 0.31.0"
 	},
 	"devDependencies": {
 		"css-loader": "^6.6.0",
 		"file-loader": "^6.2.0",
 		"glob": "^7.2.0",
-		"monaco-editor": "^0.32.0",
+		"@megaputer/monaco-editor": "^0.32.0",
 		"style-loader": "^3.3.1",
 		"typescript": "^5.0.2",
 		"webpack": "^5.68.0",
