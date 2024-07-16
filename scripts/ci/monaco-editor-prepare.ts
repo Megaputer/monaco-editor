@@ -9,6 +9,7 @@ const monacoEditorPackageJsonPath = resolve(rootPath, 'package.json');
 const monacoEditorCorePackageJsonPath = resolve(
 	rootPath,
 	'node_modules',
+	'@megaputer',
 	'monaco-editor-core',
 	'package.json'
 );
@@ -38,16 +39,16 @@ async function prepareMonacoEditorReleaseStableOrNightly() {
 }
 
 async function prepareMonacoEditorRelease(monacoEditorCoreVersion: string) {
-	await group('npm ci', async () => {
-		await run('npm ci', { cwd: resolve(rootPath, 'webpack-plugin') });
-	});
+	// await group('npm ci', async () => {
+	// 	await run('npm ci', { cwd: resolve(rootPath, 'webpack-plugin') });
+	// });
 
 	await group('Set Version & Update monaco-editor-core Version', async () => {
 		const packageJson = JSON.parse(
 			await readFile(monacoEditorPackageJsonPath, { encoding: 'utf-8' })
 		) as PackageJson;
 		packageJson.version = monacoEditorCoreVersion;
-		packageJson.devDependencies['monaco-editor-core'] = monacoEditorCoreVersion;
+		packageJson.devDependencies['@megaputer/monaco-editor-core'] = monacoEditorCoreVersion;
 		await writeJsonFile(monacoEditorPackageJsonPath, packageJson);
 	});
 

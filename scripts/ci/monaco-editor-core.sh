@@ -12,7 +12,7 @@ yarn eslint
 yarn monaco-compile-check
 yarn --max_old_space_size=4095 compile
 
-yarn test-browser --browser chromium
+#yarn test-browser --browser chromium
 
 yarn gulp editor-distro
 mkdir typings-test

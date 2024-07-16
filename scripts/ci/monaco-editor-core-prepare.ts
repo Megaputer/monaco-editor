@@ -56,7 +56,7 @@ async function prepareMonacoEditorCoreRelease(version: string, vscodeRef: string
 		await gitShallowClone(
 			// Must be a sibling to the vscode repository
 			'dependencies/vscode-loc',
-			'https://github.com/Megaputer/vscode-loc.git',
+			'https://github.com/microsoft/vscode-loc.git',
 			'main'
 		);
 	});

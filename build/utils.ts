@@ -102,7 +102,7 @@ export function buildESM(options: { base: string; entryPoints: string[]; externa
 	build({
 		entryPoints: options.entryPoints,
 		bundle: true,
-		target: 'esnext',
+		target: 'es2019',
 		format: 'esm',
 		drop: ['debugger'],
 		define: {
@@ -114,6 +114,9 @@ export function buildESM(options: { base: string; entryPoints: string[]; externa
 		external: options.external,
 		outbase: `src/${options.base}`,
 		outdir: `out/languages/bundled/esm/vs/${options.base}/`,
+		loader: {
+			'.ttf': 'file'
+		},
 		plugins: [
 			alias({
 				'vscode-nls': path.join(__dirname, 'fillers/vscode-nls.ts')
@@ -157,10 +160,16 @@ function buildOneAMD(
 		},
 		outbase: `src/${options.base}`,
 		outdir: `out/languages/bundled/amd-${type}/vs/${options.base}/`,
+		loader: {
+			'.ttf': 'file'
+		},
 		plugins: [
 			alias({
 				'vscode-nls': path.join(__dirname, '../build/fillers/vscode-nls.ts'),
-				'monaco-editor-core': path.join(__dirname, '../src/fillers/monaco-editor-core-amd.ts')
+				'@megaputer/monaco-editor-core': path.join(
+					__dirname,
+					'../src/fillers/monaco-editor-core-amd.ts'
+				)
 			})
 		],
 		external: ['vs/editor/editor.api', ...(options.external || [])]
